@@ -1,20 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'models/expense.dart';
+import 'screens/home_screen.dart';
 
-void main() {
-  runApp(const MainApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  Hive.registerAdapter(ExpenseCategoryAdapter());
+  Hive.registerAdapter(ExpenseAdapter());
+  await Hive.openBox<Expense>('expenses');
+  await Hive.openBox('settings');
+  runApp(const SpendWiseApp());
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class SpendWiseApp extends StatelessWidget {
+  const SpendWiseApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('Hello World!'),
-        ),
+    return MaterialApp(
+      title: 'SpendWise',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        useMaterial3: true,
       ),
+      home: const HomeScreen(),
     );
   }
 }

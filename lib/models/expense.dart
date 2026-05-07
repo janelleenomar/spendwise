@@ -2,7 +2,6 @@
 import 'package:hive/hive.dart';
 
 // The 'part' directive links this file to a generated file we will create next.
-// It will show a red error for now—this is completely normal.
 part 'expense.g.dart';
 
 // ── Expense Category Enum ──────────────────────────────────────────────────
