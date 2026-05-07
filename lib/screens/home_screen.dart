@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/expense.dart';
 import '../services/expense_service.dart';
+import '../services/export_service.dart';
 import '../widgets/expense_tile.dart';
 import 'add_expense_screen.dart';
 import 'edit_expense_screen.dart';
@@ -34,13 +35,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return (box.get('monthly_budget') ?? 0.0) as double;
   }
 
-Future<void> _showSetBudgetDialog() async {
-  await showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (ctx) => _BudgetDialog(initialBudget: _getBudget()),
-  );
-}
+  Future<void> _showSetBudgetDialog() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _BudgetDialog(initialBudget: _getBudget()),
+    );
+  }
 
   void _checkBudgetAlert(double totalSpent, double budget) {
     if (budget <= 0) return;
@@ -67,12 +68,37 @@ Future<void> _showSetBudgetDialog() async {
             style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          // ── EXPORT BUTTON ──
+          IconButton(
+            icon: const Icon(Icons.upload_file_outlined),
+            tooltip: 'Export Month',
+            onPressed: () async {
+              try {
+                final path = await ExportService.exportCurrentMonth();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Exported to: $path'),
+                    backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 5),
+                  ));
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Export failed: $e'),
+                    backgroundColor: Colors.red,
+                  ));
+                }
+              }
+            },
+          ),
           // ── SET BUDGET BUTTON ──
           IconButton(
             icon: const Icon(Icons.account_balance_wallet_outlined),
             tooltip: 'Set Budget',
-            onPressed: _showSetBudgetDialog,
+            onPressed: () => _showSetBudgetDialog(),
           ),
+          // ── INFO BUTTON ──
           IconButton(
             icon: const Icon(Icons.info_outline),
             onPressed: () => showAboutDialog(
@@ -86,30 +112,34 @@ Future<void> _showSetBudgetDialog() async {
           ),
         ],
       ),
-      body: ValueListenableBuilder<Box<Expense>>(
-        valueListenable: ExpenseService.listenable,
-        builder: (context, box, _) {
-          final double total =
-              box.values.fold(0.0, (s, e) => s + e.amount);
-          final double budget = _getBudget();
-          final double pct =
-              budget > 0 ? (total / budget).clamp(0.0, 1.0) : 0.0;
+      body: ValueListenableBuilder(
+        valueListenable: Hive.box('settings').listenable(),
+        builder: (context, settingsBox, _) {
+          return ValueListenableBuilder<Box<Expense>>(
+            valueListenable: ExpenseService.listenable,
+            builder: (context, box, _) {
+              final double total =
+                  box.values.fold(0.0, (s, e) => s + e.amount);
+              final double budget = _getBudget();
+              final double pct =
+                  budget > 0 ? (total / budget).clamp(0.0, 1.0) : 0.0;
 
-          // Check and show alert if needed
-          _checkBudgetAlert(total, budget);
+              _checkBudgetAlert(total, budget);
 
-          final List<Expense> expenses = _selectedCategory == null
-              ? ExpenseService.getAllExpenses()
-              : ExpenseService.getExpensesByCategory(_selectedCategory!);
+              final List<Expense> expenses = _selectedCategory == null
+                  ? ExpenseService.getAllExpenses()
+                  : ExpenseService.getExpensesByCategory(_selectedCategory!);
 
-          expenses.sort((a, b) => b.date.compareTo(a.date));
+              expenses.sort((a, b) => b.date.compareTo(a.date));
 
-          return Column(
-            children: [
-              _buildSummaryCard(total, box.length, budget, pct),
-              _buildFilterChips(),
-              Expanded(child: _buildExpenseList(expenses)),
-            ],
+              return Column(
+                children: [
+                  _buildSummaryCard(total, box.length, budget, pct),
+                  _buildFilterChips(),
+                  Expanded(child: _buildExpenseList(expenses)),
+                ],
+              );
+            },
           );
         },
       ),
@@ -136,7 +166,6 @@ Future<void> _showSetBudgetDialog() async {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── TOP ROW: label + total ──
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -160,8 +189,6 @@ Future<void> _showSetBudgetDialog() async {
                 ),
               ],
             ),
-
-            // ── BUDGET PROGRESS BAR (only shown if budget is set) ──
             if (budget > 0) ...[
               const SizedBox(height: 12),
               Row(
@@ -232,8 +259,7 @@ Future<void> _showSetBudgetDialog() async {
                 size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text('No expenses yet!',
-                style:
-                    TextStyle(fontSize: 18, color: Colors.grey[600])),
+                style: TextStyle(fontSize: 18, color: Colors.grey[600])),
             const SizedBox(height: 8),
             Text('Tap the button below to add your first expense.',
                 style: TextStyle(color: Colors.grey[400])),
@@ -263,6 +289,7 @@ Future<void> _showSetBudgetDialog() async {
   }
 }
 
+// ── Budget Dialog — separate StatefulWidget to avoid controller lifecycle issues ──
 class _BudgetDialog extends StatefulWidget {
   final double initialBudget;
   const _BudgetDialog({required this.initialBudget});
@@ -302,7 +329,7 @@ class _BudgetDialogState extends State<_BudgetDialog> {
           prefixText: '₱ ',
           border: OutlineInputBorder(),
         ),
-        autofocus: true,
+        autofocus: false,
       ),
       actions: [
         TextButton(
